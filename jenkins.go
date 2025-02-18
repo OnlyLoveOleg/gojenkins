@@ -40,18 +40,14 @@ type Jenkins struct {
 	Requester *Requester
 }
 
-// Loggers
-var (
-	Info    *log.Logger
-	Warning *log.Logger
-	Error   *log.Logger
-)
+// Main Logger
+var Logger LeveledLogger
 
 // Init Method. Should be called after creating a Jenkins Instance.
 // e.g jenkins,err := CreateJenkins("url").Init()
 // HTTP Client is set here, Connection to jenkins is tested here.
 func (j *Jenkins) Init(ctx context.Context) (*Jenkins, error) {
-	j.initLoggers()
+	j.initDefaultLogger()
 
 	// Check Connection
 	j.Raw = new(ExecutorResponse)
@@ -68,18 +64,24 @@ func (j *Jenkins) Init(ctx context.Context) (*Jenkins, error) {
 	return j, nil
 }
 
-func (j *Jenkins) initLoggers() {
-	Info = log.New(os.Stdout,
+func (j *Jenkins) initDefaultLogger() {
+	debug := log.New(os.Stdout,
+		"DEBUG: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	info := log.New(os.Stdout,
 		"INFO: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
 
-	Warning = log.New(os.Stdout,
+	warning := log.New(os.Stdout,
 		"WARNING: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
 
-	Error = log.New(os.Stderr,
+	err := log.New(os.Stderr,
 		"ERROR: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Logger = NewLeveledLogger(debug, info, warning, err)
 }
 
 // Get Basic Information About Jenkins
@@ -137,7 +139,7 @@ func (j *Jenkins) CreateNode(ctx context.Context, name string, numExecutors int,
 			"suffixStartSlaveCmd":  params["suffixStartSlaveCmd"],
 			"maxNumRetries":        params["maxNumRetries"],
 			"retryWaitTime":        params["retryWaitTime"],
-			"launchTimeoutSeconds": params["launchTimeoutSeconds"],
+			"lanuchTimeoutSeconds": params["lanuchTimeoutSeconds"],
 			"type":                 "hudson.slaves.DumbSlave",
 			"stapler-class-bag":    "true"}
 	default:
@@ -309,7 +311,7 @@ func (j *Jenkins) GetNode(ctx context.Context, name string) (*Node, error) {
 	if status == 200 {
 		return &node, nil
 	}
-	return nil, errors.New("no node found")
+	return nil, errors.New("No node found")
 }
 
 func (j *Jenkins) GetLabel(ctx context.Context, name string) (*Label, error) {
@@ -321,7 +323,7 @@ func (j *Jenkins) GetLabel(ctx context.Context, name string) (*Label, error) {
 	if status == 200 {
 		return &label, nil
 	}
-	return nil, errors.New("no label found")
+	return nil, errors.New("No label found")
 }
 
 func (j *Jenkins) GetBuild(ctx context.Context, jobName string, number int64) (*Build, error) {
@@ -489,7 +491,7 @@ func (j *Jenkins) UninstallPlugin(ctx context.Context, name string) error {
 	url := fmt.Sprintf("/pluginManager/plugin/%s/doUninstall", name)
 	resp, err := j.Requester.Post(ctx, url, strings.NewReader(""), struct{}{}, map[string]string{})
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("invalid status code returned: %d", resp.StatusCode)
+		return fmt.Errorf("Invalid status code returned: %d", resp.StatusCode)
 	}
 	return err
 }
@@ -511,7 +513,7 @@ func (j *Jenkins) InstallPlugin(ctx context.Context, name string, version string
 	resp, err := j.Requester.PostXML(ctx, "/pluginManager/installNecessaryPlugins", xml, j.Raw, map[string]string{})
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("invalid status code returned: %d", resp.StatusCode)
+		return fmt.Errorf("Invalid status code returned: %d", resp.StatusCode)
 	}
 	return err
 }
@@ -537,20 +539,6 @@ func (j *Jenkins) GetView(ctx context.Context, name string) (*View, error) {
 		return nil, err
 	}
 	return &view, nil
-}
-
-func (j *Jenkins) DeleteView(ctx context.Context, name string) error {
-	endpoint := fmt.Sprintf("/view/%s/doDelete", name)
-	r, err := j.Requester.Post(ctx, endpoint, nil, nil, nil)
-
-	if err != nil {
-		return err
-	}
-
-	if r.StatusCode == 200 {
-		return nil
-	}
-	return errors.New(strconv.Itoa(r.StatusCode))
 }
 
 func (j *Jenkins) GetAllViews(ctx context.Context) ([]*View, error) {
